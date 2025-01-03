@@ -1,15 +1,15 @@
 import os
 import json
+from groq import Groq
 import numpy as np
-import openai
+from datetime import datetime
+from openai import OpenAI
 import random
 import time
-
-start_time = time.time()
- 
-openai.api_key = os.environ["OPENAI_API_KEY"]
 from qdrant_client import models, QdrantClient
 from sentence_transformers import SentenceTransformer
+
+start_time = time.time()
 
 encoder = SentenceTransformer("all-MiniLM-L6-v2")
 print("encoder loaded")
@@ -47,12 +47,43 @@ print("sample document loaded to the vectorDB")
 
 hits = client.query_points(
     collection_name="finews_collections",
-    query=encoder.encode("ETF new launch").tolist(),
-    limit=3,
+    query=encoder.encode("technology new ETF").tolist(),
+    limit=10,
 ).points
 
-for hit in hits:
-    print(hit.payload['headline'], "score:", hit.score)
+content = [hit.payload for hit in hits]
+today = datetime.today()
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+prompt = f''' 
+Generate summarized news from user input from the context which will be given at the end of this prompt.
+the context was originally json format and transformed to a list. 
+The summary will focus on facts and accurate information and provide top 5 relevant news. top 5 News should be within maximum 2years from {today}. 
+Provide each news output with strictly following format.
+1. Date:
+2. Headline : 
+3. Related Stock:
+
+context : {content}
+
+'''
+
+chat_completion = client.chat.completions.create(
+    messages=[
+        {
+            "role": "system",
+            "content": "You are a news intelligence agent. You are providing news related to Asset Management business. You always provide accurate and precise information in professional tone",
+        },
+        {
+            "role": "user",
+            "content": prompt
+        }
+    ],
+    model="llama-3.3-70b-versatile",
+)
+
+print(chat_completion.choices[0].message.content)
+
 
 end_time = time.time()
 elapsed_time = end_time - start_time
